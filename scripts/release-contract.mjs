@@ -63,12 +63,7 @@ export async function loadReleaseContract() {
 				`${JSON.stringify(version)}.`,
 		);
 	}
-	if (versions[version] !== manifest.minAppVersion) {
-		throw new Error(
-			`versions.json must map ${JSON.stringify(version)} to manifest.json minAppVersion ` +
-				`${JSON.stringify(manifest.minAppVersion)}.`,
-		);
-	}
+	assertVersionsMapping(versions, version, manifest.minAppVersion);
 
 	return {
 		manifest,
@@ -89,6 +84,76 @@ export function assertReleaseTag(tag, version) {
 				`${JSON.stringify(version)}.`,
 		);
 	}
+}
+
+/**
+ * Check the `versions.json` fallback table the way Obsidian uses it.
+ *
+ * Obsidian only consults `versions.json` when a user's app is older than the
+ * manifest's `minAppVersion`, and its documentation says an entry is needed
+ * only when `minAppVersion` changes. A listed version must therefore agree
+ * with the manifest, while an unlisted version is acceptable as long as the
+ * closest earlier listed version requires the same minimum app version.
+ */
+function assertVersionsMapping(versions, version, minAppVersion) {
+	if (Object.hasOwn(versions, version)) {
+		if (versions[version] !== minAppVersion) {
+			throw new Error(
+				`versions.json must map ${JSON.stringify(version)} to manifest.json minAppVersion ` +
+					`${JSON.stringify(minAppVersion)}.`,
+			);
+		}
+		return;
+	}
+
+	const baseline = findNearestEarlierVersion(versions, version);
+	if (baseline === undefined) {
+		throw new Error(
+			`versions.json has no entry for ${JSON.stringify(version)} and no earlier version ` +
+				`to inherit minAppVersion from; add ${JSON.stringify(version)}: ` +
+				`${JSON.stringify(minAppVersion)}.`,
+		);
+	}
+	if (versions[baseline] !== minAppVersion) {
+		throw new Error(
+			`manifest.json minAppVersion ${JSON.stringify(minAppVersion)} differs from ` +
+				`${JSON.stringify(versions[baseline])} recorded for ${JSON.stringify(baseline)} ` +
+				`in versions.json; add ${JSON.stringify(version)}: ${JSON.stringify(minAppVersion)} ` +
+				"to versions.json.",
+		);
+	}
+}
+
+function findNearestEarlierVersion(versions, version) {
+	const target = parseReleaseVersion(version);
+	let nearest;
+	let nearestParts;
+	for (const candidate of Object.keys(versions)) {
+		const parts = parseReleaseVersion(candidate);
+		if (parts === undefined || compareVersionParts(parts, target) >= 0) {
+			continue;
+		}
+		if (nearestParts === undefined || compareVersionParts(parts, nearestParts) > 0) {
+			nearest = candidate;
+			nearestParts = parts;
+		}
+	}
+	return nearest;
+}
+
+function parseReleaseVersion(value) {
+	const match = strictReleaseVersionPattern.exec(value);
+	return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareVersionParts(left, right) {
+	for (let index = 0; index < 3; index += 1) {
+		const difference = left[index] - right[index];
+		if (difference !== 0) {
+			return difference;
+		}
+	}
+	return 0;
 }
 
 export function repositoryFileUrl(relativePath) {

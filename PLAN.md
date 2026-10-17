@@ -1,5 +1,74 @@
 # MindBraid development plan
 
+## Automated releases with release-please (2026-10-16)
+
+### Goal and mechanism
+
+- Releases were fully manual: bump four files, write the changelog, push an
+  exact `x.y.z` tag, and publish. Merged work such as the Diamond topic shape
+  and wheel/trackpad panning shipped nothing until someone tagged it.
+  `googleapis/release-please-action` now maintains a release pull request from
+  Conventional Commits on `main`.
+- Merging that pull request updates `package.json`, `package-lock.json`,
+  `manifest.json`, and `CHANGELOG.md`, creates the exact `x.y.z` tag (no `v`,
+  no component prefix), and creates a draft GitHub Release. The existing
+  `release.yml` then builds, verifies, attests, and attaches the three assets
+  to that draft and sets its title. Publishing the draft stays a deliberate
+  human step, and `release.yml` still refuses to alter a published release.
+- `release-please-config.json` uses the `node` strategy with
+  `include-v-in-tag` and `include-component-in-tag` disabled so tags match the
+  existing `0.1.0` to `0.1.4` tags, `draft` with `force-tag-creation` (GitHub
+  otherwise creates no tag for a draft, which breaks previous-release lookup and
+  the tag-triggered build), and both pre-major bump flags so `feat:` keeps the
+  0.1.x patch cadence. `manifest.json` is updated as a JSON `extra-files`
+  entry. `promo-site/` and the promo-site deploy workflow are excluded so they
+  never release the plugin. Changelog sections map `feat`, `fix`, and
+  `perf`/`revert` to Added, Fixed, and Changed to match the existing changelog
+  headings; other types are hidden and do not trigger a release.
+- `.release-please-manifest.json` records `0.1.5`, the version already
+  described by the release metadata. Release Please finds the previous release
+  by tag, so this workflow should only land after the `0.1.5` tag exists.
+
+### Token decision
+
+- The workflow uses the default `GITHUB_TOKEN` rather than a personal access
+  token or app token, so no new secret or broader credential is introduced.
+  The consequence is that resources created with it do not start other
+  workflows. The workflow therefore dispatches `ci.yml` on the release branch
+  (its check runs attach to the release pull request head commit) and dispatches
+  `release.yml` on the new tag. `workflow_dispatch` is the documented exception
+  to this limit. Bot-created tags are lightweight and unsigned.
+- If a token is added later, the tag push starts `release.yml` itself and the
+  dispatch steps can be removed; a duplicate run is harmless because uploading
+  to a draft uses `--clobber`.
+- The repository setting "Allow GitHub Actions to create and approve pull
+  requests" must be enabled for Release Please to open the release pull
+  request.
+
+### Relaxed `versions.json` rule
+
+- Obsidian consults `versions.json` only as a fallback for users whose app is
+  older than `minAppVersion`, and its documentation says an entry is needed
+  only when `minAppVersion` changes. The earlier contract, which required an
+  entry for every release, was stricter than Obsidian and could not be
+  satisfied by Release Please, whose JSON updater edits existing keys only.
+- `scripts/release-contract.mjs` now requires a listed version to equal
+  `manifest.minAppVersion`. An unlisted version passes when the nearest earlier
+  listed version (strict `x.y.z` keys, compared numerically) requires the same
+  `minAppVersion`; otherwise the check fails and names the entry to add. An
+  unlisted version with no earlier version also fails. Version agreement across
+  `package.json`, `package-lock.json`, and `manifest.json` and the strict tag
+  rules are unchanged.
+- `tests/release-contract.test.ts` runs the real `verify-release-version.mjs`
+  against fixture metadata in a temporary directory, because importing the
+  `.mjs` script from TypeScript would not satisfy strict typechecking.
+
+### Dependencies
+
+- No runtime or development dependency is added. The only addition is the
+  GitHub Action `googleapis/release-please-action`, pinned to the `v5` major
+  tag like the other workflow actions.
+
 ## 0.1.4 release hardening (2026-08-08)
 
 ### Release and CI decisions

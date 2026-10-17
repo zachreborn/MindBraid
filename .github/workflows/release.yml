@@ -87,6 +87,7 @@ jobs:
             case "$state" in
               true)
                 gh release upload "$tag" release-assets/main.js release-assets/manifest.json release-assets/styles.css --clobber
+                gh release edit "$tag" --title "MindBraid $tag"
                 ;;
               false)
                 echo "Refusing to replace assets on published release $tag."
